@@ -49,7 +49,8 @@ export const StepReportSchema = z.object({
   resolvedBy: ResolutionSchema.nullable(),
   /** Null when the step declares no checkpoint. */
   checkpointMet: z.boolean().nullable(),
-  attempts: z.number().int().min(1),
+  /** Zero on a step that was skipped because the run ended before it. */
+  attempts: z.number().int().min(0),
 });
 export type StepReport = z.infer<typeof StepReportSchema>;
 

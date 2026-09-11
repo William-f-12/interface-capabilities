@@ -12,6 +12,12 @@ dist/
 .playwright/
 user-data/
 
-# Local scratch. Evidence that is meant to be read is committed under evidence/.
+# Local scratch.
 tmp/
 *.local.json
+
+# Every replay writes a run under evidence/, so the default is to keep none of
+# them and commit only the few worth reading. Those are force-added once
+# (git add -f) and stay tracked from then on, because .gitignore has no say over
+# a file git already tracks. Debugging runs therefore never show up at all.
+evidence/

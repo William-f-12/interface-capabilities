@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import { isValidRange } from "./version.js";
 
 /* ─────────────────────────── primitives ─────────────────────────── */
 
@@ -197,6 +198,7 @@ export const CoercionSchema = z.discriminatedUnion("as", [
     onUnmapped: z.enum(["hard_failure", "null"]).default("hard_failure"),
   }),
 ]);
+export type Coercion = z.infer<typeof CoercionSchema>;
 
 /** Reads one value out of the state a step reaches and types it. */
 export const ExtractionSchema = z.object({
@@ -360,7 +362,9 @@ export const CapabilitySchema = z
     /** Which product and which build range. The tenant is not part of this. */
     target: z.object({
       app: z.string(),
-      appVersion: z.string(),
+      appVersion: z
+        .string()
+        .refine(isValidRange, { message: 'not a version range, e.g. ">=2.1.0 <3.0.0"' }),
     }),
 
     /** Checked before the first step runs. */

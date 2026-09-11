@@ -8,7 +8,13 @@
  */
 
 import { z } from "zod";
-import { AmbientOutcomeSchema, StepSchema, TargetSpecSchema } from "./schema.js";
+import {
+  AmbientOutcomeSchema,
+  StateAssertionSchema,
+  StepSchema,
+  TargetSpecSchema,
+} from "./schema.js";
+import { isVersion } from "./version.js";
 
 /** Names an environment variable. Credential values are never stored here. */
 const CredentialRefSchema = z.object({
@@ -24,7 +30,7 @@ export const TenantConfigSchema = z
 
     /** Matched against a capability's `target.appVersion` range before a run. */
     app: z.string(),
-    appVersion: z.string(),
+    appVersion: z.string().refine(isVersion, { message: "not a version, e.g. 2.1.0" }),
 
     baseUrl: z.string().url(),
 
@@ -32,6 +38,18 @@ export const TenantConfigSchema = z
       loginPath: z.string(),
       /** Role name -> where to read that role's credentials. */
       credentials: z.record(CredentialRefSchema),
+      /**
+       * The sign-in screen's controls, described the same way any other screen
+       * is. Re-authenticating after a timeout is then the engine walking a
+       * declared flow, not a branch of app-specific code inside it.
+       */
+      form: z.object({
+        username: TargetSpecSchema,
+        password: TargetSpecSchema,
+        submit: TargetSpecSchema,
+      }),
+      /** Holds exactly when a session exists, and not on the sign-in screen. */
+      signedIn: StateAssertionSchema,
     }),
 
     /** Conditions checked after every step, for every capability on this app. */

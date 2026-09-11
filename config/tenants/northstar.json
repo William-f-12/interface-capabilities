@@ -8,7 +8,7 @@
   "baseUrl": "http://localhost:4173",
 
   "auth": {
-    "loginPath": "/login.aspx",
+    "loginPath": "/login",
     "credentials": {
       "teller": {
         "username": "env:NORTHSTAR_TELLER_USER",
@@ -18,6 +18,45 @@
         "username": "env:NORTHSTAR_SUPERVISOR_USER",
         "password": "env:NORTHSTAR_SUPERVISOR_PASSWORD"
       }
+    },
+    "form": {
+      "username": {
+        "primary": {
+          "kind": "ax",
+          "role": "textbox",
+          "name": { "template": "User ID", "match": "contains" }
+        },
+        "fallbacks": [
+          { "kind": "ax", "role": "textbox", "scope": { "kind": "labelled", "labelText": "User ID" } },
+          { "kind": "dom", "selector": "input[name$='txtUser']" }
+        ]
+      },
+      "password": {
+        "primary": {
+          "kind": "ax",
+          "role": "textbox",
+          "name": { "template": "Password", "match": "contains" }
+        },
+        "fallbacks": [
+          { "kind": "dom", "selector": "input[type=password]" }
+        ]
+      },
+      "submit": {
+        "primary": {
+          "kind": "ax",
+          "role": "button",
+          "name": { "template": "Sign In", "match": "equals" }
+        },
+        "fallbacks": [
+          { "kind": "dom", "selector": "input[type=image][src*='btn_signin']" }
+        ]
+      }
+    },
+    "signedIn": {
+      "kind": "ax",
+      "role": "link",
+      "framePath": ["nav"],
+      "name": { "template": "Sign Out", "match": "equals" }
     }
   },
 
