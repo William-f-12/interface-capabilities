@@ -42,6 +42,7 @@ model, so the demo's replay half runs with no key and no network.
 ### What runs today
 
 ```
+npm run lint                 # ESLint over every TypeScript source
 npm run typecheck            # every package plus the tests, strict
 npm run validate             # parse every capability and tenant profile, and
                              # check their cross-references resolve
@@ -72,6 +73,14 @@ The integration suite drives the fixture using the locators from the
 hand-written capability, so a pass also says that artifact resolves against the
 real screens. It reads the same member through two different searches to show
 that a control whose generated id moves between renders is still hit correctly.
+
+### Continuous integration
+
+Every push runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml): one job
+for lint, typecheck, contract validation and the unit suite, and a second that
+starts the fixture inside the runner and drives it with a real Chromium. Work
+happens on `develop` and reaches `main` through a pull request, so `main` only
+ever holds a state CI has already passed.
 
 ## Demo path
 
