@@ -8,18 +8,22 @@
     "targets/*"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p targets/legacy-core/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
+    "lint": "eslint .",
     "validate": "tsx packages/cli/src/validate.ts",
     "test": "node --import tsx --test \"tests/unit/**/*.test.ts\"",
     "target": "npm start --workspace @icap/legacy-core",
     "test:integration": "node --import tsx --test \"tests/integration/**/*.test.ts\""
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.2",
+    "eslint": "^10.10.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.70.0"
   }
 }

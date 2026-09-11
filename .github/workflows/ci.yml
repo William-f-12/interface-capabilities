@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, types, contracts, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run validate
+      - run: npm test
+
+  integration:
+    name: Integration tests against the fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the fixture and wait for it to answer
+        run: |
+          npm run target > fixture.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4173/login > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "the fixture never answered on :4173"
+          cat fixture.log
+          exit 1
+
+      - run: npm run test:integration
+
+      - name: Fixture log
+        if: failure()
+        run: cat fixture.log
