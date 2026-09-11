@@ -1,0 +1,21 @@
+{
+  "name": "@icap/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Surfaces, capability artifacts, discovery, replay, policy and handoff. Deliberately has no dependency on targets/* — the system does not know the target application exists.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./web": {
+      "types": "./src/surface/web.ts",
+      "default": "./src/surface/web.ts"
+    }
+  },
+  "dependencies": {
+    "playwright": "^1.63.0",
+    "zod": "^3.23.0"
+  }
+}

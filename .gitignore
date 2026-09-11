@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Credentials never enter the repo. Tenant configs name environment variables;
+# the values live here and nowhere else.
+.env
+.env.*
+!.env.example
+
+# Playwright's own browser state can contain session cookies.
+.playwright/
+user-data/
+
+# Local scratch. Evidence that is meant to be read is committed under evidence/.
+tmp/
+*.local.json

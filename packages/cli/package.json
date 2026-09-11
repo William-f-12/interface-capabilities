@@ -1,0 +1,10 @@
+{
+  "name": "@icap/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Entry points: validate, discover, replay, operator, catalog.",
+  "dependencies": {
+    "@icap/core": "0.1.0"
+  }
+}

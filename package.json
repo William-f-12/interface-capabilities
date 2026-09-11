@@ -1,0 +1,25 @@
+{
+  "name": "interface-capabilities",
+  "private": true,
+  "type": "module",
+  "description": "Record-once, replay-many computer-use automation for legacy back-office applications.",
+  "workspaces": [
+    "packages/*",
+    "targets/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p targets/legacy-core/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
+    "validate": "tsx packages/cli/src/validate.ts",
+    "test": "node --import tsx --test \"tests/unit/**/*.test.ts\"",
+    "target": "npm start --workspace @icap/legacy-core",
+    "test:integration": "node --import tsx --test \"tests/integration/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

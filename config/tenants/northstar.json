@@ -1,0 +1,104 @@
+{
+  "apiVersion": "tenant/v1",
+  "tenantId": "northstar",
+  "displayName": "Northstar Credit Union",
+
+  "app": "legacy-core",
+  "appVersion": "2.1.0",
+  "baseUrl": "http://localhost:4173",
+
+  "auth": {
+    "loginPath": "/login.aspx",
+    "credentials": {
+      "teller": {
+        "username": "env:NORTHSTAR_TELLER_USER",
+        "password": "env:NORTHSTAR_TELLER_PASSWORD"
+      },
+      "supervisor": {
+        "username": "env:NORTHSTAR_SUPERVISOR_USER",
+        "password": "env:NORTHSTAR_SUPERVISOR_PASSWORD"
+      }
+    }
+  },
+
+  "ambientOutcomes": [
+    {
+      "code": "SESSION_EXPIRED",
+      "kind": "recoverable",
+      "description": "The core's 30-minute idle timeout dropped the session and bounced the browser to the sign-in page. Recoverable once: sign in again and restart the flow from the beginning, because a partially completed flow cannot be assumed to have survived.",
+      "detect": {
+        "kind": "ax",
+        "role": "heading",
+        "name": { "pattern": "please sign in", "flags": "i" }
+      },
+      "recover": {
+        "action": "reauthenticate",
+        "restartFromStart": true
+      },
+      "maxAttempts": 1
+    },
+    {
+      "code": "SYSTEM_NOTICE_INTERSTITIAL",
+      "kind": "recoverable",
+      "description": "The start-of-day system notice modal. Appears on the first navigation of a session and occasionally after a core restart. Dismissing it is safe and changes nothing.",
+      "detect": {
+        "kind": "ax",
+        "role": "dialog",
+        "name": { "pattern": "system notice", "flags": "i" }
+      },
+      "recover": {
+        "action": "dismiss",
+        "target": {
+          "primary": {
+            "kind": "ax",
+            "role": "button",
+            "name": { "template": "Continue", "match": "equals" }
+          },
+          "fallbacks": [
+            { "kind": "dom", "selector": "#noticeDialog input[type=submit]" }
+          ]
+        }
+      },
+      "maxAttempts": 2
+    },
+    {
+      "code": "TRANSIENT_SLOW_LOAD",
+      "kind": "recoverable",
+      "description": "The core's batch window makes screens render behind a 'Please wait' interstitial. Not an error — wait for it to clear and retry the step.",
+      "detect": {
+        "kind": "text",
+        "text": { "pattern": "please wait .* processing", "flags": "i" }
+      },
+      "recover": { "action": "wait", "ms": 3000 },
+      "maxAttempts": 3
+    },
+    {
+      "code": "PERMISSION_DENIED",
+      "kind": "business_outcome",
+      "description": "The signed-in role is not entitled to this screen or action. A legitimate answer the caller needs — it tells them to route the work to someone else — not a defect in the automation.",
+      "onDetect": "halt",
+      "detect": {
+        "allOf": [
+          { "kind": "ax", "role": "alert" },
+          { "kind": "text", "text": { "pattern": "not authorized|permission denied", "flags": "i" } }
+        ]
+      },
+      "maxAttempts": 1
+    },
+    {
+      "code": "APP_ERROR",
+      "kind": "hard_failure",
+      "description": "The core returned its unhandled-error screen. Declared so the failure reports as 'the application errored at step X' rather than 'checkpoint timed out'; the classification is the same either way, but the diagnosis is not.",
+      "detect": {
+        "kind": "ax",
+        "role": "heading",
+        "name": { "pattern": "server error|unexpected error", "flags": "i" }
+      },
+      "maxAttempts": 0
+    }
+  ],
+
+  "targetOverrides": {},
+
+  "stepInsertions": []
+}

@@ -1,0 +1,326 @@
+{
+  "apiVersion": "capability/v1",
+  "id": "member.lookup_savings_balance",
+  "version": "1.0.0",
+  "name": "Look up a member's savings balance",
+  "description": "Finds a member by their member number, opens their account overview, and returns the savings balance along with the member's name and the account's status. Read-only: this capability never changes anything in the core.",
+
+  "target": {
+    "app": "legacy-core",
+    "appVersion": ">=2.1.0 <3.0.0"
+  },
+
+  "preconditions": {
+    "authenticated": true,
+    "role": "teller"
+  },
+
+  "risk": "read_only",
+  "approval": "approved",
+
+  "provenance": {
+    "source": "handwritten",
+    "createdAt": "2026-09-09T00:00:00Z",
+    "model": null,
+    "traceRef": null,
+    "humanEdits": [],
+    "note": "Written by hand before the discovery agent existed, to develop and harden the replay engine against a known-good artifact. Kept as a reference implementation to compare the agent's output against. The discovery-produced version of this same capability is recorded separately with source=llm_discovery."
+  },
+
+  "inputs": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["member_id"],
+    "properties": {
+      "member_id": {
+        "type": "string",
+        "pattern": "^[0-9]{5,10}$",
+        "description": "The institution's member number. Digits only."
+      }
+    }
+  },
+
+  "outputs": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["member_name", "savings_balance", "account_status"],
+    "properties": {
+      "member_name": {
+        "type": "string",
+        "description": "The member's name as the core displays it."
+      },
+      "savings_balance": { "$ref": "#/$defs/Money" },
+      "account_status": {
+        "enum": ["active", "restricted", "closed"],
+        "description": "Status of the savings account itself, not of the member."
+      }
+    },
+    "$defs": {
+      "Money": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["amount", "currency"],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]{1,4})?$",
+            "description": "Decimal string, never a float."
+          },
+          "currency": { "const": "USD" }
+        }
+      }
+    }
+  },
+
+  "outcomes": [
+    {
+      "code": "MEMBER_NOT_FOUND",
+      "kind": "business_outcome",
+      "description": "No member exists with the supplied number. This is a legitimate answer the caller needs, not a failure of the automation.",
+      "after": "search.submit",
+      "onDetect": "halt",
+      "detect": {
+        "allOf": [
+          { "kind": "ax", "role": "alert", "framePath": ["content"] },
+          {
+            "kind": "text",
+            "framePath": ["content"],
+            "text": { "pattern": "no members? found", "flags": "i" }
+          }
+        ]
+      }
+    },
+    {
+      "code": "ACCOUNT_RESTRICTED",
+      "kind": "business_outcome",
+      "description": "The member exists and the balance is readable, but the account carries a restriction the caller must surface before acting on the number. The run continues so the balance is still returned alongside this outcome.",
+      "after": "detail.open",
+      "onDetect": "continue",
+      "detect": {
+        "allOf": [
+          { "kind": "ax", "role": "status", "framePath": ["content"] },
+          {
+            "kind": "text",
+            "framePath": ["content"],
+            "text": { "pattern": "account is restricted", "flags": "i" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "steps": [
+    {
+      "id": "nav.member_search",
+      "intent": "Open the Member Search screen from the left navigation frame.",
+      "action": { "type": "click" },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "link",
+          "framePath": ["nav"],
+          "name": { "template": "Member Search", "match": "equals" }
+        },
+        "fallbacks": [
+          {
+            "kind": "text",
+            "framePath": ["nav"],
+            "text": { "template": "Member Search", "match": "contains" }
+          },
+          {
+            "kind": "dom",
+            "framePath": ["nav"],
+            "selector": "a[href*='MemberSearch.aspx']"
+          }
+        ]
+      },
+      "checkpoint": {
+        "kind": "ax",
+        "role": "heading",
+        "framePath": ["content"],
+        "name": { "template": "Member Search", "match": "contains" }
+      }
+    },
+
+    {
+      "id": "search.fill_member_id",
+      "intent": "Type the member number into the Member ID field.",
+      "action": {
+        "type": "type",
+        "value": "{{inputs.member_id}}",
+        "clearFirst": true
+      },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "textbox",
+          "framePath": ["content"],
+          "name": { "template": "Member ID", "match": "contains" }
+        },
+        "fallbacks": [
+          {
+            "kind": "ax",
+            "role": "textbox",
+            "framePath": ["content"],
+            "scope": { "kind": "labelled", "labelText": "Member ID" }
+          },
+          {
+            "kind": "dom",
+            "framePath": ["content"],
+            "selector": "input[name$='txtMemberId']"
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "search.submit",
+      "intent": "Submit the search. The app does a full-page postback here, so nothing is assumed about the previous page surviving.",
+      "action": { "type": "click" },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "button",
+          "framePath": ["content"],
+          "name": { "template": "Search", "match": "equals" }
+        },
+        "fallbacks": [
+          {
+            "kind": "dom",
+            "framePath": ["content"],
+            "selector": "input[type=image][src*='btn_search']"
+          }
+        ]
+      },
+      "checkpoint": {
+        "anyOf": [
+          {
+            "kind": "ax",
+            "role": "table",
+            "framePath": ["content"],
+            "name": { "template": "Search Results", "match": "contains" }
+          },
+          { "kind": "ax", "role": "alert", "framePath": ["content"] }
+        ]
+      }
+    },
+
+    {
+      "id": "detail.open",
+      "intent": "Open the detail page for the row whose member number matches the input. The row is found by content, never by position, so a search that returns several rows still opens the right one.",
+      "action": { "type": "click" },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "link",
+          "framePath": ["content"],
+          "name": { "template": "View", "match": "equals" },
+          "scope": { "kind": "row", "containingText": "{{inputs.member_id}}" }
+        },
+        "fallbacks": [
+          {
+            "kind": "text",
+            "framePath": ["content"],
+            "text": { "template": "View", "match": "equals" },
+            "scope": { "kind": "row", "containingText": "{{inputs.member_id}}" }
+          }
+        ]
+      },
+      "checkpoint": {
+        "kind": "ax",
+        "role": "heading",
+        "framePath": ["content"],
+        "name": { "template": "Member #{{inputs.member_id}}", "match": "contains" }
+      }
+    },
+
+    {
+      "id": "detail.open_accounts_tab",
+      "intent": "Switch to the Accounts tab, which lists one row per account product held by this member.",
+      "action": { "type": "click" },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "link",
+          "framePath": ["content"],
+          "name": { "template": "Accounts", "match": "equals" }
+        },
+        "fallbacks": [
+          {
+            "kind": "dom",
+            "framePath": ["content"],
+            "selector": "a[href*='tab=accounts']"
+          }
+        ]
+      },
+      "checkpoint": {
+        "kind": "ax",
+        "role": "table",
+        "framePath": ["content"],
+        "name": { "template": "Accounts", "match": "contains" }
+      },
+      "extract": [
+        {
+          "to": "member_name",
+          "target": {
+            "kind": "ax",
+            "role": "cell",
+            "framePath": ["content"],
+            "scope": { "kind": "labelled", "labelText": "Member Name:" }
+          },
+          "coerce": { "as": "string", "trim": true }
+        },
+        {
+          "to": "savings_balance",
+          "target": {
+            "kind": "ax",
+            "role": "cell",
+            "framePath": ["content"],
+            "scope": {
+              "kind": "tableCell",
+              "rowContaining": "Savings",
+              "columnHeader": "Balance"
+            }
+          },
+          "coerce": { "as": "Money", "locale": "en-US" },
+          "onCoerceFailure": "hard_failure"
+        },
+        {
+          "to": "account_status",
+          "target": {
+            "kind": "ax",
+            "role": "cell",
+            "framePath": ["content"],
+            "scope": {
+              "kind": "tableCell",
+              "rowContaining": "Savings",
+              "columnHeader": "Status"
+            }
+          },
+          "coerce": {
+            "as": "enum",
+            "map": {
+              "Active": "active",
+              "Restricted": "restricted",
+              "Closed": "closed"
+            },
+            "onUnmapped": "hard_failure"
+          },
+          "onCoerceFailure": "hard_failure"
+        }
+      ]
+    }
+  ],
+
+  "successCondition": {
+    "allRequiredOutputsPresent": true,
+    "finalState": {
+      "kind": "ax",
+      "role": "heading",
+      "framePath": ["content"],
+      "name": { "template": "Member #{{inputs.member_id}}", "match": "contains" }
+    }
+  }
+}

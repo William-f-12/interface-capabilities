@@ -1,0 +1,139 @@
+{
+  "apiVersion": "capability/v1",
+  "id": "member.open_sub_account",
+  "version": "0.1.0",
+  "name": "Open a sub-account for an existing member",
+  "description": "Opens a new sub-account of the requested type under an existing member, funds it with the initial deposit, and returns the new account number once the core reaches its confirmation screen. Irreversible: once the confirmation screen is reached the account exists.",
+
+  "target": {
+    "app": "legacy-core",
+    "appVersion": ">=2.1.0 <3.0.0"
+  },
+
+  "preconditions": {
+    "authenticated": true,
+    "role": "teller"
+  },
+
+  "risk": "irreversible",
+  "approval": "draft",
+
+  "provenance": {
+    "source": "handwritten",
+    "createdAt": "2026-09-09T00:00:00Z",
+    "model": null,
+    "traceRef": null,
+    "humanEdits": [],
+    "note": "Contract authored before the flow was recorded. A draft is a capability whose contract is settled but whose steps are not: it states what the caller may supply, what it will get back, and which answers count as legitimate business outcomes, and leaves the discovery agent to bind those to screens. Drafts cannot be replayed; promotion to approved requires a recorded, reviewed step list."
+  },
+
+  "inputs": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["member_id", "account_type", "initial_deposit"],
+    "properties": {
+      "member_id": {
+        "type": "string",
+        "pattern": "^[0-9]{5,10}$",
+        "description": "The institution's member number. Digits only."
+      },
+      "account_type": {
+        "enum": ["savings", "checking", "money_market", "certificate"],
+        "description": "Product to open. The core rejects a second account of a type the member already holds."
+      },
+      "initial_deposit": { "$ref": "#/$defs/Money" }
+    },
+    "$defs": {
+      "Money": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["amount", "currency"],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+            "description": "Decimal string, never a float."
+          },
+          "currency": { "const": "USD" }
+        }
+      }
+    }
+  },
+
+  "outputs": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["new_account_number", "confirmation_id"],
+    "properties": {
+      "new_account_number": {
+        "type": "string",
+        "description": "The account number the core assigned."
+      },
+      "confirmation_id": {
+        "type": "string",
+        "description": "The core's reference for this posting. The caller needs it to reconcile or to have the action reversed by a person."
+      }
+    }
+  },
+
+  "outcomes": [
+    {
+      "code": "MEMBER_NOT_FOUND",
+      "kind": "business_outcome",
+      "description": "No member exists with the supplied number. Nothing was created.",
+      "onDetect": "halt",
+      "detect": {
+        "allOf": [
+          { "kind": "ax", "role": "alert", "framePath": ["content"] },
+          {
+            "kind": "text",
+            "framePath": ["content"],
+            "text": { "pattern": "no members? found", "flags": "i" }
+          }
+        ]
+      }
+    },
+    {
+      "code": "DUPLICATE_ACCOUNT_TYPE",
+      "kind": "business_outcome",
+      "description": "The member already holds an account of this type and the institution's rules forbid a second. A legitimate answer, not a failure — nothing was created.",
+      "onDetect": "halt",
+      "detect": {
+        "allOf": [
+          { "kind": "ax", "role": "alert", "framePath": ["content"] },
+          {
+            "kind": "text",
+            "framePath": ["content"],
+            "text": { "pattern": "already holds an? .* account", "flags": "i" }
+          }
+        ]
+      }
+    },
+    {
+      "code": "SUPERVISOR_AUTHORIZATION_REQUIRED",
+      "kind": "recoverable",
+      "description": "The core demands a supervisor authorization code because the deposit exceeds the teller's limit. Recoverable only by a person: the automation must never hold this code, so it escalates and a supervisor enters it in the same live session.",
+      "detect": {
+        "kind": "ax",
+        "role": "dialog",
+        "framePath": ["content"],
+        "name": { "pattern": "supervisor authorization required", "flags": "i" }
+      },
+      "recover": {
+        "action": "escalate",
+        "reason": "The core requires a supervisor authorization code for a deposit above the teller limit. A supervisor must enter the code in the live session, then hand control back.",
+        "requiredRole": "supervisor",
+        "resumeFrom": "confirm.submit"
+      },
+      "maxAttempts": 1
+    }
+  ],
+
+  "steps": [],
+
+  "successCondition": {
+    "allRequiredOutputsPresent": true
+  }
+}
