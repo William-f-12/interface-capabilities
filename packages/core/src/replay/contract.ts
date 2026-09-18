@@ -49,7 +49,8 @@ export const StepReportSchema = z.object({
   resolvedBy: ResolutionSchema.nullable(),
   /** Null when the step declares no checkpoint. */
   checkpointMet: z.boolean().nullable(),
-  attempts: z.number().int().min(1),
+  /** Zero on a step that was skipped because the run ended before it. */
+  attempts: z.number().int().min(0),
 });
 export type StepReport = z.infer<typeof StepReportSchema>;
 
@@ -180,8 +181,12 @@ const resultCommon = {
   observedOutcomes: z.array(OutcomeObservationSchema).default([]),
   recoveries: z.array(RecoveryEventSchema).default([]),
 
-  /** Directory under evidence/replay/ holding the log and snapshots. */
-  evidenceRef: z.string(),
+  /**
+   * Directory under evidence/ holding the log and snapshots. Null until
+   * something has actually written one, so the field never names a path that
+   * was never created.
+   */
+  evidenceRef: z.string().nullable(),
 };
 
 export const ReplayResultSchema = z.discriminatedUnion("status", [

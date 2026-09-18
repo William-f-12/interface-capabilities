@@ -73,11 +73,17 @@ test("the browser-backed surface is still reachable through the subpath", () => 
   assert.equal(packages.has("playwright"), true);
 });
 
-test("the barrel depends on nothing outside zod and the node standard library", () => {
+// Both are validation libraries: zod types the artifact, ajv checks the JSON
+// Schema an artifact publishes as its contract. Anything else reaching the
+// barrel is a boundary being crossed, not a dependency being added.
+const BARREL_DEPENDENCIES = ["zod", "ajv"];
+
+test("the barrel depends on nothing outside its validation libraries and node", () => {
   const { packages } = reachable(join(repoRoot, "packages", "core", "src", "index.ts"));
   for (const name of packages) {
+    const root = name.replace(/^([^/]+).*$/, "$1");
     assert.ok(
-      name === "zod" || name.startsWith("node:"),
+      BARREL_DEPENDENCIES.includes(root) || name.startsWith("node:"),
       `unexpected dependency in the barrel: ${name}`,
     );
   }

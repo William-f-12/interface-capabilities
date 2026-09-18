@@ -57,15 +57,38 @@ export interface Surface {
   close(): Promise<void>;
 }
 
-/** Formats an observation for a model, trimmed to a character budget. */
+const TRUNCATED = "\n… truncated";
+const JOINER = "\n\n";
+
+/**
+ * Formats an observation for a model or a report, trimmed to a character budget.
+ *
+ * Every frame keeps a share of the budget rather than the text being cut off at
+ * whatever point the budget runs out. A frameset puts navigation first and
+ * content last, so cutting from the end drops precisely the frame a failure
+ * happened in — and a report whose `observed` is all menu is worse than useless.
+ * Room a small frame does not need rolls on to the next.
+ */
 export function renderObservation(observation: Observation, maxChars: number): string {
+  const header = `# ${observation.title}\n${observation.url}\n`;
   const blocks = observation.frames.map((frame) => {
     const name = frame.path.length === 0 ? "<top>" : frame.path.join(" > ");
     return `## frame ${name}  (${frame.url})\n${frame.tree}`;
   });
-  const header = `# ${observation.title}\n${observation.url}\n`;
-  const body = blocks.join("\n\n");
-  if (header.length + body.length <= maxChars) return header + body;
-  const room = Math.max(0, maxChars - header.length - 24);
-  return `${header}${body.slice(0, room)}\n… observation truncated`;
+
+  const whole = header + blocks.join(JOINER);
+  if (whole.length <= maxChars || blocks.length === 0) return whole;
+
+  let room = Math.max(0, maxChars - header.length);
+  const kept = blocks.map((block, i) => {
+    const share = Math.floor(room / (blocks.length - i));
+    const piece =
+      block.length <= share
+        ? block
+        : block.slice(0, Math.max(0, share - TRUNCATED.length)) + TRUNCATED;
+    room = Math.max(0, room - piece.length - JOINER.length);
+    return piece;
+  });
+
+  return header + kept.join(JOINER);
 }

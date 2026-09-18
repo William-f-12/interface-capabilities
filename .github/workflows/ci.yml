@@ -9,10 +9,21 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The workflow's own scripts are written once, in bash, and run the same on the
+# Windows runner as on the other two.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check:
-    name: Lint, types, contracts, unit tests
-    runs-on: ubuntu-latest
+    name: Checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not hide whether the others are fine.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,8 +37,12 @@ jobs:
       - run: npm test
 
   integration:
-    name: Integration tests against the fixture
-    runs-on: ubuntu-latest
+    name: Integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,14 +51,26 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Playwright downloads to a different place on each platform. Naming one
+      # keeps the cache step identical everywhere. It is set here rather than in
+      # the job's env because the runner context is not available there.
+      - name: Put the browser somewhere every platform agrees on
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/playwright-browsers" >> "$GITHUB_ENV"
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
+          path: ${{ runner.temp }}/playwright-browsers
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Install Chromium
+      # --with-deps installs system packages, which only means anything on Linux.
+      - name: Install Chromium and its system libraries
+        if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Chromium
+        if: runner.os != 'Linux'
+        run: npx playwright install chromium
 
       - name: Start the fixture and wait for it to answer
         run: |
@@ -58,6 +85,35 @@ jobs:
 
       - run: npm run test:integration
 
+      # The README tells a reviewer to run these four commands first, so a break
+      # in them is a break in the first thing anyone sees.
+      - name: The README's demo path
+        run: |
+          cp .env.example .env
+          npm run replay -- --capability member.lookup_savings_balance --input member_id=100005
+          npm run replay -- --capability member.lookup_savings_balance --input member_id=999999
+          npm run replay -- --capability member.lookup_savings_balance --input member_id=100002
+          curl -s "http://localhost:4173/_chaos?mode=app_error&times=2"
+          if npm run replay -- --capability member.lookup_savings_balance --input member_id=100005; then
+            echo "an injected application error should have failed the run"
+            exit 1
+          fi
+
       - name: Fixture log
         if: failure()
         run: cat fixture.log
+
+  # One check with a fixed name for branch protection to require, so adding or
+  # dropping a platform never leaves main waiting on a check that cannot report.
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    needs: [check, integration]
+    if: always()
+    steps:
+      - name: Every platform passed
+        run: |
+          echo "checks:      ${{ needs.check.result }}"
+          echo "integration: ${{ needs.integration.result }}"
+          test "${{ needs.check.result }}" = success
+          test "${{ needs.integration.result }}" = success

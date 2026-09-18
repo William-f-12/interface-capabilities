@@ -14,7 +14,11 @@ export const DiscoveryBudgetSchema = z.object({
    */
   maxConsecutiveNoProgress: z.number().int().positive().default(3),
 
-  /** Size of the observation handed to the model, after pruning. */
+  /**
+   * Size of the observation handed to the model, after pruning. Counted in
+   * tokens, while `renderObservation` is given a character budget — whoever
+   * wires the two together converts rather than passing this number straight in.
+   */
   maxObservationTokens: z.number().int().positive().default(4_000),
 
   /** Whole-run ceiling on model spend. Null disables the check. */
