@@ -124,11 +124,66 @@ test("a named input is redacted in the result and in the summary alike", async (
   }
 });
 
+test("a redacted value is gone from the failure report too, not just from its own field", async () => {
+  const root = scratch();
+  // A checkpoint that quotes the input and never arrives: the report says what
+  // it expected, and what it expected is the value.
+  const capability = testCapability({
+    outputs: { type: "object", additionalProperties: false, required: [], properties: {} },
+    steps: [
+      {
+        id: "open",
+        intent: "Open the search screen.",
+        action: { type: "click" },
+        target: { primary: { kind: "dom", selector: "#open" } },
+        checkpoint: {
+          kind: "text",
+          text: { template: "Result for {{inputs.query}}", match: "contains" },
+        },
+      },
+    ],
+  });
+  // And the value stands on the screen, so the dump quotes it as well.
+  const surface = new ScriptedSurface({ facts: ["#open", "Member 100005 — pending"] });
+  const result = await replay({
+    capability,
+    tenant: testTenant(),
+    inputs: { query: "100005" },
+    surface,
+    budget: fastBudget,
+    runId: "run-1",
+  });
+
+  const written = await writeEvidence(result, { root, surface, redact: ["query"] });
+  assert.ok(written.status === "failed");
+  assert.doesNotMatch(written.failure.expected, /100005/, "the returned report still quotes it");
+  const directory = join(root, "replay", "hard-failure", "run-1");
+  for (const file of ["result.json", "summary.md", "screen.txt"]) {
+    assert.doesNotMatch(
+      readFileSync(join(directory, file), "utf8"),
+      /100005/,
+      `${file} still carries the value`,
+    );
+  }
+});
+
 test("nothing is redacted unless it is asked for", async () => {
   const root = scratch();
   const surface = happyPathSurface();
   const written = await writeEvidence(await runWith(surface), { root, surface });
   assert.deepEqual(written.inputs, { query: "100005" });
+});
+
+test("a run id cannot name a directory above the one it is filed in", async () => {
+  const root = scratch();
+  const surface = happyPathSurface();
+  const written = await writeEvidence(await runWith(surface, ".."), { root, surface });
+
+  assert.ok(
+    !existsSync(join(root, "replay", "result.json")),
+    "the record climbed out of its own directory",
+  );
+  assert.ok(existsSync(join(root, written.evidenceRef ?? "", "result.json")));
 });
 
 test("a run id that is not a legal directory name is made into one", async () => {

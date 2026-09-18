@@ -181,8 +181,12 @@ const resultCommon = {
   observedOutcomes: z.array(OutcomeObservationSchema).default([]),
   recoveries: z.array(RecoveryEventSchema).default([]),
 
-  /** Directory under evidence/replay/ holding the log and snapshots. */
-  evidenceRef: z.string(),
+  /**
+   * Directory under evidence/ holding the log and snapshots. Null until
+   * something has actually written one, so the field never names a path that
+   * was never created.
+   */
+  evidenceRef: z.string().nullable(),
 };
 
 export const ReplayResultSchema = z.discriminatedUnion("status", [

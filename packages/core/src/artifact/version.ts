@@ -46,7 +46,10 @@ interface Bound {
 
 function boundsOf(comparator: string): Bound[] | null {
   const text = comparator.trim();
-  if (text === "" || text === "*") return [];
+  // `*` is a deliberate "any build"; nothing at all is an unfinished field, and
+  // treating the two alike would turn an empty appVersion into no guard.
+  if (text === "*") return [];
+  if (text === "") return null;
 
   const match = /^(>=|<=|>|<|=|\^|~)?\s*(.+)$/.exec(text);
   if (!match) return null;

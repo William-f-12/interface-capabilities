@@ -168,7 +168,7 @@ test("an outcome that says continue does not end the wait for the checkpoint", a
   const surface = new ScriptedSurface({
     facts: ["#open", "#restricted", "#query", "#submit"],
     text: { "#amount": "$1,204.50", "#status": "Active" },
-    appearOnFind: { "#form": 3 },
+    appearOnFind: { "#form": 2 },
     onAction: (entry, facts) => {
       if (entry === "click #submit") facts.add("#results").add("#amount").add("#status");
     },

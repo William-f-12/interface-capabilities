@@ -34,7 +34,10 @@ export interface EvidenceOptions {
 }
 
 function pathSafe(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]/g, "-");
+  const safe = value.replace(/[^A-Za-z0-9._-]/g, "-");
+  // "." and ".." name a directory other than the one being created, and a run's
+  // record belongs inside its own.
+  return /^\.+$/.test(safe) ? safe.replace(/\./g, "_") : safe;
 }
 
 function redactInputs(
@@ -47,6 +50,37 @@ function redactInputs(
     if (name in safe) safe[name] = "[redacted]";
   }
   return safe;
+}
+
+/** The shortest value that can be taken out of free text without wrecking it. */
+const SCRUB_FLOOR = 3;
+
+/**
+ * Removes a redacted value from everywhere it could have been written, not only
+ * from the field that carries its name. A failure report quotes the values it
+ * interpolated into what it expected, and a screen dump quotes whatever stood on
+ * the screen — labelling one copy redacted while writing the rest down is not
+ * redaction.
+ *
+ * A one- or two-character value occurs all over an ordinary screen, so taking it
+ * out would destroy the record it exists to preserve; a value that short is not
+ * a secret either. A run id is the other limit: it names a real directory, so a
+ * caller who builds one out of a sensitive value has already written it down.
+ */
+function scrubber(
+  inputs: Record<string, unknown>,
+  redact: string[],
+): (text: string) => string {
+  const values = redact
+    .map((name) => inputs[name])
+    .filter((value): value is string | number => ["string", "number"].includes(typeof value))
+    .map(String)
+    .filter((value) => value.length >= SCRUB_FLOOR)
+    // Longest first, so a value that contains another is replaced whole.
+    .sort((a, b) => b.length - a.length);
+
+  if (values.length === 0) return (text) => text;
+  return (text) => values.reduce((out, value) => out.split(value).join("[redacted]"), text);
 }
 
 function stepTable(result: ReplayResult): string {
@@ -169,10 +203,9 @@ export async function writeEvidence(
     tree = observation ? renderObservation(observation, SCREEN_CHARS) : null;
   }
 
-  const stamp = {
-    inputs: redactInputs(result.inputs, options.redact ?? []),
-    evidenceRef: relative,
-  };
+  const redact = options.redact ?? [];
+  const scrub = scrubber(result.inputs, redact);
+  const stamp = { inputs: redactInputs(result.inputs, redact), evidenceRef: relative };
 
   const stamped: ReplayResult =
     result.status === "failed"
@@ -181,15 +214,20 @@ export async function writeEvidence(
           ...stamp,
           failure: {
             ...result.failure,
+            expected: scrub(result.failure.expected),
+            observed: scrub(result.failure.observed),
+            message: scrub(result.failure.message),
             snapshotRef: screenshot ? `${relative}/screen.png` : null,
           },
         }
       : { ...result, ...stamp };
 
   writeFileSync(join(directory, "result.json"), `${JSON.stringify(stamped, null, 2)}\n`, "utf8");
-  writeFileSync(join(directory, "summary.md"), summaryOf(stamped), "utf8");
+  writeFileSync(join(directory, "summary.md"), scrub(summaryOf(stamped)), "utf8");
   if (screenshot) writeFileSync(join(directory, "screen.png"), screenshot);
-  if (tree) writeFileSync(join(directory, "screen.txt"), `${tree}\n`, "utf8");
+  // The tree is quoted screen text; the screenshot is the one thing here that
+  // cannot be scrubbed without reading pixels.
+  if (tree) writeFileSync(join(directory, "screen.txt"), `${scrub(tree)}\n`, "utf8");
 
   return stamped;
 }

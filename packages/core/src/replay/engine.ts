@@ -14,11 +14,11 @@
  */
 
 import { describeAssertion, describeLocator, describeTarget } from "../artifact/describe.js";
-import type { Capability, Outcome, Step } from "../artifact/schema.js";
+import type { Capability, Extraction, Outcome, Step } from "../artifact/schema.js";
 import type { TenantConfig } from "../artifact/tenant.js";
 import { holds } from "../surface/assert.js";
 import { resolveWhenReady } from "../surface/resolve.js";
-import { render, type BindingContext } from "../surface/template.js";
+import { MissingInputError, render, type BindingContext } from "../surface/template.js";
 import { renderObservation, type ElementRef, type Surface } from "../surface/types.js";
 import { tenantSignIn, type SignIn } from "./authenticate.js";
 import { coerce } from "./coerce.js";
@@ -138,8 +138,13 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
   // lands in: member.lookup_savings_balance-20260911T052110Z
   const stamp = startedAt.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const runId = request.runId ?? `${capability.id}-${stamp}`;
-  const evidenceRef = request.evidenceRef ?? `replay/${runId}`;
-  const signIn = request.signIn ?? tenantSignIn(surface, tenant);
+  // The evidence writer stamps the real directory; the engine does not invent one.
+  const evidenceRef = request.evidenceRef ?? null;
+
+  // Built per call so the sign-in wait respects what is left of the run's
+  // budget rather than its own fixed patience.
+  const signIn: SignIn =
+    request.signIn ?? ((role) => tenantSignIn(surface, tenant, { timeoutMs: waitBudgetMs() })(role));
 
   const stepReports: StepReport[] = [];
   const observedOutcomes: OutcomeObservation[] = [];
@@ -196,6 +201,39 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
     };
   }
 
+  /* ── budget ────────────────────────────────────────────────────────────── */
+
+  function remainingMs(): number {
+    return Math.max(0, deadline - clock.now().getTime());
+  }
+
+  /**
+   * How long one wait may take: the per-step budget, or whatever is left of the
+   * run's, whichever is shorter. Unclamped, a patient step carries the run well
+   * past the wall clock it was given — and then reports the step's own cause
+   * rather than the budget as the reason it stopped.
+   */
+  function waitBudgetMs(): number {
+    return Math.min(budget.perStepMs, remainingMs());
+  }
+
+  function outOfTime(): boolean {
+    return remainingMs() === 0;
+  }
+
+  async function budgetExceeded(step: Step): Promise<Extract<Verdict, { kind: "fail" }>> {
+    return {
+      kind: "fail",
+      failure: await failureAt(
+        step,
+        "BUDGET_EXCEEDED",
+        null,
+        `the run to finish within ${budget.wallClockMs}ms`,
+        `The wall-clock budget ran out at step ${step.id}.`,
+      ),
+    };
+  }
+
   /** The engine is held to the same contract it publishes to its callers. */
   function settleResult(result: unknown): ReplayResult {
     return ReplayResultSchema.parse(result);
@@ -235,7 +273,7 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
    * or a declared condition appearing, or the per-step budget running out.
    */
   async function settle(step: Step): Promise<{ met: boolean | null; detected: Detected[] }> {
-    const until = clock.now().getTime() + budget.perStepMs;
+    const until = clock.now().getTime() + waitBudgetMs();
     for (;;) {
       if (step.checkpoint && (await holds(surface, step.checkpoint, ctx))) {
         // A met checkpoint does not end the question: a search that found
@@ -305,20 +343,22 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
 
     switch (recovery.action) {
       case "dismiss": {
-        const control = await resolveWhenReady(surface, recovery.target, ctx, budget.perStepMs, {
+        const control = await resolveWhenReady(surface, recovery.target, ctx, waitBudgetMs(), {
           anyFrame: true,
         });
         if (control) {
           await surface.click(control.ref);
           succeeded = true;
         } else {
-          detail = `no control matching ${describeTarget(recovery.target)}`;
+          detail = `no control matching ${describeTarget(recovery.target, inputs)}`;
         }
         break;
       }
 
       case "wait":
-        await clock.sleep(recovery.ms);
+        // Never wait past the run's own deadline; the loop then reports the
+        // budget rather than whatever the step was still missing.
+        await clock.sleep(Math.min(recovery.ms, remainingMs()));
         succeeded = true;
         break;
 
@@ -377,10 +417,30 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
     };
   }
 
-  /** Records everything detected, then acts on the most consequential of them. */
-  async function judge(detected: Detected[], step: Step): Promise<Verdict | null> {
+  /**
+   * Records everything detected, then acts on the most consequential of them.
+   *
+   * `seen` spans one step's attempts. A condition still on screen when the step
+   * is taken again is the same fact, not a second one, so it is recorded once
+   * and the retries show up in `recoveries` where the attempt count belongs.
+   */
+  async function judge(
+    detected: Detected[],
+    step: Step,
+    seen: Map<string, OutcomeObservation>,
+  ): Promise<Verdict | null> {
     if (detected.length === 0) return null;
-    const recorded = detected.map((d) => ({ detected: d, observation: record(d, step) }));
+
+    const recorded = detected.map((d) => {
+      // Keyed by origin too: a capability and a tenant may both use a code, and
+      // they are two conditions, not one.
+      const key = `${d.origin}:${d.outcome.code}`;
+      const already = seen.get(key);
+      if (already) return { detected: d, observation: already };
+      const observation = record(d, step);
+      seen.set(key, observation);
+      return { detected: d, observation };
+    });
 
     const decisive = recorded[0];
     if (!decisive) return null;
@@ -433,9 +493,30 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
     }
   }
 
+  /**
+   * A value gets the same patience a step's own target does. A checkpoint says
+   * the screen has landed, not that every cell on it has painted, and a report
+   * blaming the artifact for a value that was a poll away is a false alarm.
+   *
+   * An extraction that tolerates having no value is the exception: waiting out
+   * the budget for something declared optional would cost that on every run.
+   */
+  async function findValue(extraction: Extraction): Promise<ElementRef | null> {
+    const found = await surface.find(extraction.target, ctx);
+    if (found || extraction.onCoerceFailure === "null") return found;
+
+    const until = clock.now().getTime() + waitBudgetMs();
+    for (;;) {
+      if (clock.now().getTime() >= until) return null;
+      await clock.sleep(POLL_MS);
+      const ref = await surface.find(extraction.target, ctx);
+      if (ref) return ref;
+    }
+  }
+
   async function extractInto(step: Step): Promise<Extract<Verdict, { kind: "fail" }> | null> {
     for (const extraction of step.extract) {
-      const ref = await surface.find(extraction.target, ctx);
+      const ref = await findValue(extraction);
 
       if (!ref) {
         // "null" says the artifact tolerates having no value here at all.
@@ -449,7 +530,7 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
             step,
             "TARGET_NOT_FOUND",
             null,
-            `${describeLocator(extraction.target)}, to read "${extraction.to}" from`,
+            `${describeLocator(extraction.target, inputs)}, to read "${extraction.to}" from`,
             `Step ${step.id} could not find the value it reads into "${extraction.to}".`,
           ),
         };
@@ -491,6 +572,8 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
     let resolvedBy: Resolution | null = null;
     let checkpointMet: boolean | null = null;
 
+    const seen = new Map<string, OutcomeObservation>();
+
     const report = (status: "ok" | "failed"): void => {
       stepReports.push({
         stepId: step.id,
@@ -506,19 +589,14 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
 
     for (;;) {
       attempts += 1;
+      // The report describes the attempt it is reporting on, so what an earlier
+      // attempt managed does not carry into it.
+      resolvedBy = null;
+      checkpointMet = null;
 
-      if (clock.now().getTime() >= deadline) {
+      if (outOfTime()) {
         report("failed");
-        return {
-          kind: "fail",
-          failure: await failureAt(
-            step,
-            "BUDGET_EXCEEDED",
-            null,
-            `the run to finish within ${budget.wallClockMs}ms`,
-            `The wall-clock budget ran out at step ${step.id}.`,
-          ),
-        };
+        return budgetExceeded(step);
       }
 
       let ref: ElementRef | null = null;
@@ -539,25 +617,27 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
           };
         }
 
-        const resolved = await resolveWhenReady(surface, target, ctx, budget.perStepMs);
+        const resolved = await resolveWhenReady(surface, target, ctx, waitBudgetMs());
         if (!resolved) {
           // A declared condition explains an absent control better than "not
           // found" does: on a timed-out session the control is genuinely gone.
-          const verdict = await judge(await detect(step), step);
+          const verdict = await judge(await detect(step), step, seen);
           if (verdict?.kind === "retry") continue;
           report("failed");
-          return (
-            verdict ?? {
-              kind: "fail",
-              failure: await failureAt(
-                step,
-                "TARGET_NOT_FOUND",
-                null,
-                describeTarget(target),
-                `No rung of the ladder for step ${step.id} resolved.`,
-              ),
-            }
-          );
+          if (verdict) return verdict;
+          // A control that never appeared because there was no time left to
+          // look is the budget's doing, not a missing control.
+          if (outOfTime()) return budgetExceeded(step);
+          return {
+            kind: "fail",
+            failure: await failureAt(
+              step,
+              "TARGET_NOT_FOUND",
+              null,
+              describeTarget(target, inputs),
+              `No rung of the ladder for step ${step.id} resolved.`,
+            ),
+          };
         }
         resolvedBy = resolved.resolution;
         ref = resolved.ref;
@@ -568,7 +648,7 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
       const settled = await settle(step);
       checkpointMet = settled.met;
 
-      const verdict = await judge(settled.detected, step);
+      const verdict = await judge(settled.detected, step, seen);
       if (verdict) {
         if (verdict.kind === "retry") continue;
         report(verdict.kind === "halt" && checkpointMet !== false ? "ok" : "failed");
@@ -577,13 +657,16 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
 
       if (checkpointMet === false) {
         report("failed");
+        // With more time the state might still have arrived, so the budget is
+        // the honest cause when that is what ran out.
+        if (outOfTime()) return budgetExceeded(step);
         return {
           kind: "fail",
           failure: await failureAt(
             step,
             "CHECKPOINT_NOT_MET",
             null,
-            step.checkpoint ? describeAssertion(step.checkpoint) : "the step to land",
+            step.checkpoint ? describeAssertion(step.checkpoint, inputs) : "the step to land",
             `Step ${step.id} acted, but the state it expects never arrived.`,
           ),
         };
@@ -684,7 +767,7 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
           null,
           "CHECKPOINT_NOT_MET",
           null,
-          describeAssertion(finalState),
+          describeAssertion(finalState, inputs),
           "Every step ran, but the state the capability calls success is not the state on screen.",
         ),
       );
@@ -699,7 +782,21 @@ export async function replay(request: ReplayRequest): Promise<ReplayResult> {
   try {
     return await run();
   } catch (err) {
-    // The surface itself broke. A caller gets a result, never an exception.
+    // A caller gets a result, never an exception. An unfillable template is the
+    // one throw that is not the surface's fault — preconditions catch it for a
+    // capability, and this keeps a tenant-supplied one honestly classified too.
+    if (err instanceof MissingInputError) {
+      return failed({
+        cause: "CONTRACT_VIOLATION",
+        code: null,
+        stepId: null,
+        stepIntent: null,
+        expected: `a value for the "${err.inputName}" input`,
+        observed: err.message,
+        message: "The flow interpolates an input the caller did not supply.",
+        snapshotRef: null,
+      });
+    }
     return failed({
       cause: "SURFACE_UNAVAILABLE",
       code: null,

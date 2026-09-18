@@ -62,6 +62,15 @@ test("a malformed range is recognised, so it can be refused when the artifact lo
   assert.equal(isValidRange("latest"), false);
 });
 
+test("an unfinished range is not a wildcard, so an empty field guards nothing away", () => {
+  // "*" says any build on purpose; blank says the author never filled it in.
+  // Treated alike, a typo would silently match every version there is.
+  for (const range of ["", "   ", "|| 2.1.0", "2.1.0 ||"]) {
+    assert.equal(isValidRange(range), false, `accepted ${JSON.stringify(range)}`);
+    assert.equal(satisfies("9.9.9", range), false, `matched ${JSON.stringify(range)}`);
+  }
+});
+
 test("a tenant's build must be a concrete version, never a range", () => {
   assert.equal(isVersion("2.1.0"), true);
   assert.equal(isVersion("2.1.0-rc.1"), true);

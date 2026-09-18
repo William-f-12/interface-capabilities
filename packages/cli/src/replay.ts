@@ -34,7 +34,9 @@ Options:
   --capability <id>   capability directory under capabilities/
   --version <file>    artifact file within it (default: the highest vN.json)
   --tenant <id>       profile under config/tenants/ (default: northstar)
-  --input k=v         one caller input; repeat for more
+  --input k=v         one caller input, as a string; repeat for more
+  --input-json k=json one caller input that is not a string, e.g.
+                      --input-json 'initial_deposit={"amount":"50.00","currency":"USD"}'
   --headed            show the browser
   --no-evidence       run without writing anything to evidence/
   --help              print this
@@ -52,6 +54,14 @@ interface Args {
   inputs: Record<string, unknown>;
   headed: boolean;
   evidence: boolean;
+}
+
+function parseJsonInput(name: string, raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`--input-json ${name}= is not valid JSON: ${raw}`);
+  }
 }
 
 function parseArgs(argv: string[]): Args {
@@ -80,10 +90,14 @@ function parseArgs(argv: string[]): Args {
         args.tenant = value ?? args.tenant;
         i += 1;
         break;
-      case "--input": {
+      case "--input":
+      case "--input-json": {
         const [name, ...rest] = (value ?? "").split("=");
-        if (!name || rest.length === 0) throw new Error(`--input wants k=v, got "${value}"`);
-        args.inputs[name] = rest.join("=");
+        if (!name || rest.length === 0) throw new Error(`${flag} wants k=v, got "${value}"`);
+        const raw = rest.join("=");
+        // A string stays a string: parsing every value would turn a member
+        // number into a number and fail a contract that asks for digits.
+        args.inputs[name] = flag === "--input" ? raw : parseJsonInput(name, raw);
         i += 1;
         break;
       }
@@ -153,7 +167,7 @@ async function main(): Promise<number> {
       console.error(`\nexpected: ${result.failure.expected}`);
       console.error(`observed: ${result.failure.observed}`);
     }
-    if (args.evidence) console.log(`\nevidence: evidence/${result.evidenceRef}`);
+    if (result.evidenceRef) console.log(`\nevidence: evidence/${result.evidenceRef}`);
 
     return EXIT[result.status];
   } finally {

@@ -11,6 +11,7 @@
 import type { Capability } from "../artifact/schema.js";
 import type { TenantConfig } from "../artifact/tenant.js";
 import { satisfies } from "../artifact/version.js";
+import { TEMPLATE } from "../surface/template.js";
 import type { FailureCause, FailureDetail } from "./contract.js";
 import { checkAgainstSchema } from "./jsonschema.js";
 
@@ -30,6 +31,21 @@ function refuse(
     message,
     snapshotRef: null,
   };
+}
+
+/** Names every input the capability interpolates anywhere, cached per artifact. */
+const interpolated = new WeakMap<object, Set<string>>();
+
+function templateInputs(capability: Capability): Set<string> {
+  const cached = interpolated.get(capability);
+  if (cached) return cached;
+
+  const names = new Set<string>();
+  for (const match of JSON.stringify(capability).matchAll(TEMPLATE)) {
+    if (match[1]) names.add(match[1]);
+  }
+  interpolated.set(capability, names);
+  return names;
 }
 
 /** The reason this run must not start, or null if nothing stands in the way. */
@@ -91,6 +107,48 @@ export function checkPreconditions(
       "inputs matching the declared input schema",
       check.errors.join("; "),
       `The caller's inputs do not satisfy ${capability.id}'s contract.`,
+    );
+  }
+
+  // A tenant patch naming a step this capability does not have would otherwise
+  // be dropped in silence — and a tenant that needs an extra step needs it.
+  const stepIds = new Set(capability.steps.map((step) => step.id));
+
+  for (const insertion of tenant.stepInsertions) {
+    if (insertion.capabilityId !== capability.id) continue;
+    if (!stepIds.has(insertion.beforeStepId)) {
+      return refuse(
+        "CONTRACT_VIOLATION",
+        `a step named "${insertion.beforeStepId}" to insert "${insertion.step.id}" before`,
+        `${capability.id}@${capability.version} has: ${[...stepIds].join(", ")}`,
+        `Tenant ${tenant.tenantId} patches a step this version of the capability does not have.`,
+      );
+    }
+  }
+
+  for (const key of Object.keys(tenant.targetOverrides)) {
+    const [id, stepId] = key.split("#");
+    if (id !== capability.id) continue;
+    if (!stepId || !stepIds.has(stepId)) {
+      return refuse(
+        "CONTRACT_VIOLATION",
+        `a step named "${stepId ?? ""}" for override "${key}"`,
+        `${capability.id}@${capability.version} has: ${[...stepIds].join(", ")}`,
+        `Tenant ${tenant.tenantId} overrides a step this version of the capability does not have.`,
+      );
+    }
+  }
+
+  // The schema can be satisfied while a template is still unfillable: an input
+  // that is declared but not required, referenced by a step, and left out. That
+  // would otherwise surface as an exception from the middle of the flow.
+  const missing = [...templateInputs(capability)].filter((name) => inputs[name] === undefined);
+  if (missing.length > 0) {
+    return refuse(
+      "CONTRACT_VIOLATION",
+      `a value for every input the flow interpolates: ${missing.join(", ")}`,
+      `not supplied: ${missing.join(", ")}`,
+      `${capability.id} interpolates inputs the caller did not supply.`,
     );
   }
 

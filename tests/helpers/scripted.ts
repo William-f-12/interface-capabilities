@@ -41,7 +41,7 @@ export interface ScriptedSurfaceOptions {
   text?: Record<string, string>;
   /** Runs after every action and may change what is on screen. */
   onAction?: (entry: ActionEntry, facts: Set<string>) => void;
-  /** Selectors that only appear on the nth find(), standing in for a slow paint. */
+  /** Selectors that appear on the nth look for that selector, standing in for a slow paint. */
   appearOnFind?: Record<string, number>;
   /** Thrown by the next call to observe(), to stand in for a dead surface. */
   breakOn?: "observe" | "click";
@@ -55,7 +55,7 @@ export class ScriptedSurface implements Surface {
   private readonly onAction: (entry: ActionEntry, facts: Set<string>) => void;
   private readonly breakOn: ScriptedSurfaceOptions["breakOn"];
   private readonly appearOnFind: Record<string, number>;
-  private finds = 0;
+  private readonly looks = new Map<string, number>();
 
   constructor(options: ScriptedSurfaceOptions = {}) {
     this.facts = new Set(options.facts ?? []);
@@ -72,10 +72,13 @@ export class ScriptedSurface implements Surface {
 
   async find(locator: ElementLocator): Promise<ElementRef | null> {
     const key = keyOf(locator);
-    this.finds += 1;
+    // Counted per selector: a look for one control says nothing about whether
+    // another has painted yet.
+    const look = (this.looks.get(key) ?? 0) + 1;
+    this.looks.set(key, look);
 
     const due = this.appearOnFind[key];
-    if (due !== undefined && this.finds >= due) this.facts.add(key);
+    if (due !== undefined && look >= due) this.facts.add(key);
 
     return this.facts.has(key) ? key : null;
   }

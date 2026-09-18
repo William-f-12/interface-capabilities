@@ -6,14 +6,25 @@ export interface BindingContext {
   inputs: Record<string, unknown>;
 }
 
-const TEMPLATE = /\{\{\s*inputs\.([A-Za-z0-9_]+)\s*\}\}/g;
+export const TEMPLATE = /\{\{\s*inputs\.([A-Za-z0-9_]+)\s*\}\}/g;
+
+/**
+ * A template wanted an input the caller did not supply.
+ *
+ * Typed so a replay reports it as the contract problem it is. Left untyped it
+ * reads as the surface having broken, which is the one thing it is not.
+ */
+export class MissingInputError extends Error {
+  constructor(readonly inputName: string) {
+    super(`template references input "${inputName}", which was not supplied`);
+    this.name = "MissingInputError";
+  }
+}
 
 export function render(template: string, ctx: BindingContext): string {
   return template.replace(TEMPLATE, (_match, name: string) => {
     const value = ctx.inputs[name];
-    if (value === undefined) {
-      throw new Error(`template references input "${name}", which was not supplied`);
-    }
+    if (value === undefined) throw new MissingInputError(name);
     return String(value);
   });
 }
