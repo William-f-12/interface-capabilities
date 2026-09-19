@@ -1,0 +1,46 @@
+# Northstar Core 2.1
+http://localhost:4173/
+## frame <top>  (http://localhost:4173/)
+- document:
+  - iframe
+  - iframe
+
+## frame nav  (http://localhost:4173/nav)
+- table:
+  - rowgroup:
+    - row "A. Teller":
+      - cell "A. Teller"
+    - row "Home":
+      - cell "Home":
+        - link "Home":
+          - /url: /content/Home.aspx
+    - row "Member Search":
+      - cell "Member Search":
+        - link "Member Search":
+          - /url: /content/MemberSearch.aspx
+    - row "Transactions":
+      - cell "Transactions":
+        - link "Transactions":
+          - /url: /content/Transactions.aspx
+    - row "Reports":
+      - cell "Reports":
+        - link "Reports":
+          - /url: /content/Reports.aspx
+    - row "Sign Out":
+      - cell "Sign Out":
+        - link "Sign Out":
+          - /url: /logout
+
+## frame content  (http://localhost:4173/content/MemberSearch.aspx)
+- heading "Member Search" [level=2]
+- table:
+  - rowgroup:
+    - row "Member ID 100005":
+      - cell "Member ID"
+      - cell "100005":
+        - textbox "Member ID": "100005"
+    - row "Last Name":
+      - cell "Last Name"
+      - cell:
+        - textbox "Last Name"
+- button "Search"

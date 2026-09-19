@@ -1,0 +1,340 @@
+{
+  "apiVersion": "capability/v1",
+  "id": "member.lookup_savings_balance",
+  "version": "1.0.0",
+  "name": "Look up a member's savings balance",
+  "description": "Finds a member by their member number, opens their account overview, and returns the savings balance along with the member's name and the account's status. Read-only: this capability never changes anything in the core.",
+  "target": {
+    "app": "legacy-core",
+    "appVersion": ">=2.1.0 <3.0.0"
+  },
+  "preconditions": {
+    "authenticated": true,
+    "role": "teller"
+  },
+  "risk": "read_only",
+  "approval": "draft",
+  "provenance": {
+    "source": "llm_discovery",
+    "createdAt": "2026-09-19T03:55:08.941Z",
+    "model": "deepseek-flash",
+    "traceRef": "discovery/2026-09-19-member.lookup_savings_balance",
+    "humanEdits": []
+  },
+  "inputs": {
+    "type": "object",
+    "properties": {
+      "member_id": {
+        "type": "string",
+        "pattern": "^[0-9]{5,10}$",
+        "description": "The institution's member number. Digits only."
+      }
+    },
+    "required": [
+      "member_id"
+    ],
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false
+  },
+  "outputs": {
+    "type": "object",
+    "properties": {
+      "member_name": {
+        "type": "string",
+        "description": "The member's name as the core displays it."
+      },
+      "savings_balance": {
+        "$ref": "#/$defs/Money"
+      },
+      "account_status": {
+        "enum": [
+          "active",
+          "restricted",
+          "closed"
+        ],
+        "description": "Status of the savings account itself, not of the member."
+      }
+    },
+    "required": [
+      "member_name",
+      "savings_balance",
+      "account_status"
+    ],
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "$defs": {
+      "Money": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]{1,4})?$",
+            "description": "Decimal string, never a float."
+          },
+          "currency": {
+            "const": "USD"
+          }
+        }
+      }
+    }
+  },
+  "outcomes": [],
+  "steps": [
+    {
+      "id": "open_the_member_search",
+      "intent": "Open the Member Search page to look up the member by number.",
+      "action": {
+        "type": "click"
+      },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "link",
+          "name": {
+            "template": "Member Search",
+            "match": "contains"
+          },
+          "framePath": [
+            "nav"
+          ]
+        },
+        "fallbacks": []
+      },
+      "checkpoint": {
+        "kind": "ax",
+        "role": "heading",
+        "name": {
+          "template": "Member Search",
+          "match": "contains"
+        },
+        "framePath": [
+          "content"
+        ]
+      },
+      "extract": []
+    },
+    {
+      "id": "enter_the_member_number",
+      "intent": "Enter the member number into the Member ID field to look the member up.",
+      "action": {
+        "type": "type",
+        "value": "{{inputs.member_id}}",
+        "clearFirst": true
+      },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "textbox",
+          "name": {
+            "template": "Member ID",
+            "match": "contains"
+          },
+          "framePath": [
+            "content"
+          ]
+        },
+        "fallbacks": []
+      },
+      "checkpoint": {
+        "kind": "ax",
+        "role": "textbox",
+        "name": {
+          "template": "Member ID",
+          "match": "contains"
+        },
+        "framePath": [
+          "content"
+        ]
+      },
+      "extract": []
+    },
+    {
+      "id": "submit_the_member_id",
+      "intent": "Submit the Member ID search to find member {{inputs.member_id}}.",
+      "action": {
+        "type": "click"
+      },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "button",
+          "name": {
+            "template": "Search",
+            "match": "contains"
+          },
+          "framePath": [
+            "content"
+          ]
+        },
+        "fallbacks": []
+      },
+      "checkpoint": {
+        "kind": "text",
+        "text": {
+          "template": "{{inputs.member_id}}",
+          "match": "contains"
+        },
+        "framePath": [
+          "content"
+        ]
+      },
+      "extract": []
+    },
+    {
+      "id": "open_the_member_s",
+      "intent": "Open the member's account overview by following the View link in the search result row for the searched member number.",
+      "action": {
+        "type": "click"
+      },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "link",
+          "name": {
+            "template": "View",
+            "match": "contains"
+          },
+          "framePath": [
+            "content"
+          ],
+          "scope": {
+            "kind": "row",
+            "containingText": "{{inputs.member_id}}"
+          }
+        },
+        "fallbacks": []
+      },
+      "checkpoint": {
+        "kind": "text",
+        "text": {
+          "template": "Detail",
+          "match": "contains"
+        },
+        "framePath": [
+          "content"
+        ]
+      },
+      "extract": []
+    },
+    {
+      "id": "open_the_accounts_tab",
+      "intent": "Open the Accounts tab to see the member's savings account balance and status.",
+      "action": {
+        "type": "click"
+      },
+      "target": {
+        "primary": {
+          "kind": "ax",
+          "role": "link",
+          "name": {
+            "template": "Accounts",
+            "match": "contains"
+          },
+          "framePath": [
+            "content"
+          ]
+        },
+        "fallbacks": []
+      },
+      "checkpoint": {
+        "kind": "text",
+        "text": {
+          "template": "Savings",
+          "match": "contains"
+        },
+        "framePath": [
+          "content"
+        ]
+      },
+      "extract": [
+        {
+          "to": "member_name",
+          "target": {
+            "kind": "dom",
+            "selector": "td:nth-child(2)",
+            "framePath": [
+              "content"
+            ],
+            "scope": {
+              "kind": "row",
+              "containingText": "Member Name:"
+            }
+          },
+          "coerce": {
+            "as": "string",
+            "trim": true
+          },
+          "onCoerceFailure": "hard_failure"
+        },
+        {
+          "to": "savings_balance",
+          "target": {
+            "kind": "text",
+            "text": {
+              "template": "$",
+              "match": "contains"
+            },
+            "framePath": [
+              "content"
+            ],
+            "scope": {
+              "kind": "tableCell",
+              "rowContaining": "Savings",
+              "columnHeader": "Balance"
+            }
+          },
+          "coerce": {
+            "as": "Money",
+            "locale": "en-US"
+          },
+          "onCoerceFailure": "hard_failure"
+        },
+        {
+          "to": "account_status",
+          "target": {
+            "kind": "text",
+            "text": {
+              "template": "",
+              "match": "contains"
+            },
+            "framePath": [
+              "content"
+            ],
+            "scope": {
+              "kind": "tableCell",
+              "rowContaining": "Savings",
+              "columnHeader": "Status"
+            }
+          },
+          "coerce": {
+            "as": "enum",
+            "map": {
+              "Active": "active"
+            },
+            "onUnmapped": "hard_failure"
+          },
+          "onCoerceFailure": "hard_failure"
+        }
+      ]
+    }
+  ],
+  "successCondition": {
+    "allRequiredOutputsPresent": true,
+    "finalState": {
+      "kind": "ax",
+      "role": "heading",
+      "name": {
+        "template": "Member #{{inputs.member_id}}",
+        "match": "contains"
+      },
+      "framePath": [
+        "content"
+      ]
+    }
+  }
+}

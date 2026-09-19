@@ -73,6 +73,44 @@ test("the browser-backed surface is still reachable through the subpath", () => 
   assert.equal(packages.has("playwright"), true);
 });
 
+test("the model client is reachable through its subpath and nowhere else", () => {
+  const client = reachable(join(repoRoot, "packages", "core", "src", "model", "anthropic.ts"));
+  assert.equal(client.packages.has("@anthropic-ai/sdk"), true);
+
+  const { packages } = reachable(join(repoRoot, "packages", "core", "src", "index.ts"));
+  assert.equal(
+    packages.has("@anthropic-ai/sdk"),
+    false,
+    "the SDK reached the barrel; discovery types must not drag a vendor in",
+  );
+});
+
+// The seam is only worth having if a second implementation can sit behind it
+// without the loop, the compiler or the replay engine noticing.
+test("a model client implements the seam without the seam knowing about it", () => {
+  const { files } = reachable(
+    join(repoRoot, "packages", "core", "src", "discovery", "model.ts"),
+  );
+  for (const file of files) {
+    assert.doesNotMatch(
+      relative(repoRoot, file),
+      /model[\\/](anthropic|openai-compatible)/,
+      "the interface reached an implementation of itself",
+    );
+  }
+});
+
+test("no model client is reachable from the barrel, vendor SDK or not", () => {
+  const { files } = reachable(join(repoRoot, "packages", "core", "src", "index.ts"));
+  for (const file of files) {
+    assert.doesNotMatch(
+      relative(repoRoot, file),
+      /src[\\/]model[\\/]/,
+      "importing a schema should not pull in something that talks to a model",
+    );
+  }
+});
+
 // Both are validation libraries: zod types the artifact, ajv checks the JSON
 // Schema an artifact publishes as its contract. Anything else reaching the
 // barrel is a boundary being crossed, not a dependency being added.

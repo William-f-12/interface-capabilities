@@ -1,0 +1,70 @@
+# Northstar Core 2.1
+http://localhost:4173/
+## frame <top>  (http://localhost:4173/)
+- document:
+  - iframe
+  - iframe
+
+## frame nav  (http://localhost:4173/nav)
+- table:
+  - rowgroup:
+    - row "A. Teller":
+      - cell "A. Teller"
+    - row "Home":
+      - cell "Home":
+        - link "Home":
+          - /url: /content/Home.aspx
+    - row "Member Search":
+      - cell "Member Search":
+        - link "Member Search":
+          - /url: /content/MemberSearch.aspx
+    - row "Transactions":
+      - cell "Transactions":
+        - link "Transactions":
+          - /url: /content/Transactions.aspx
+    - row "Reports":
+      - cell "Reports":
+        - link "Reports":
+          - /url: /content/Reports.aspx
+    - row "Sign Out":
+      - cell "Sign Out":
+        - link "Sign Out":
+          - /url: /logout
+
+## frame content  (http://localhost:4173/content/MemberDetail.aspx?id=100005&tab=accounts)
+- 'heading "Member #100005" [level=2]'
+- table:
+  - rowgroup:
+    - 'row "Member Name: Priya Raman"':
+      - cell "Member Name:"
+      - cell "Priya Raman"
+    - 'row "Member Since: 08/30/2018"':
+      - cell "Member Since:"
+      - cell "08/30/2018"
+    - 'row "Branch: Riverside"':
+      - cell "Branch:"
+      - cell "Riverside"
+- paragraph:
+  - link "Summary":
+    - /url: /content/MemberDetail.aspx?id=100005&tab=summary
+  - text: "| Accounts |"
+  - link "Notes":
+    - /url: /content/MemberDetail.aspx?id=100005&tab=notes
+- table "Accounts":
+  - caption: Accounts
+  - rowgroup:
+    - row "Type Account No Balance Status":
+      - columnheader "Type"
+      - columnheader "Account No"
+      - columnheader "Balance"
+      - columnheader "Status"
+    - row "Savings 0005-S $45,000.00 Active":
+      - cell "Savings"
+      - cell "0005-S"
+      - cell "$45,000.00"
+      - cell "Active"
+    - row "Checking 0005-C $1,250.75 Active":
+      - cell "Checking"
+      - cell "0005-C"
+      - cell "$1,250.75"
+      - cell "Active"
