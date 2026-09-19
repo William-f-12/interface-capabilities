@@ -20,4 +20,7 @@ tmp/
 # them and commit only the few worth reading. Those are force-added once
 # (git add -f) and stay tracked from then on, because .gitignore has no say over
 # a file git already tracks. Debugging runs therefore never show up at all.
-evidence/
+#
+# Anchored to the root: unanchored, this matches a directory of that name at any
+# depth, source directories included.
+/evidence/
