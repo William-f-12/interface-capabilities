@@ -15,6 +15,8 @@
     "lint": "eslint .",
     "validate": "tsx packages/cli/src/validate.ts",
     "replay": "node --env-file-if-exists=.env --import tsx packages/cli/src/replay.ts",
+    "discover": "node --env-file-if-exists=.env --import tsx packages/cli/src/discover.ts",
+    "prune": "tsx packages/cli/src/prune.ts",
     "test": "node --import tsx --test \"tests/unit/**/*.test.ts\"",
     "target": "npm start --workspace @icap/legacy-core",
     "test:integration": "node --import tsx --test \"tests/integration/**/*.test.ts\""

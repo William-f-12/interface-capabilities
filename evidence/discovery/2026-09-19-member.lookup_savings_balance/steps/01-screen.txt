@@ -1,0 +1,37 @@
+# Northstar Core 2.1
+http://localhost:4173/
+## frame <top>  (http://localhost:4173/)
+- document:
+  - iframe
+  - iframe
+
+## frame nav  (http://localhost:4173/nav)
+- table:
+  - rowgroup:
+    - row "A. Teller":
+      - cell "A. Teller"
+    - row "Home":
+      - cell "Home":
+        - link "Home":
+          - /url: /content/Home.aspx
+    - row "Member Search":
+      - cell "Member Search":
+        - link "Member Search":
+          - /url: /content/MemberSearch.aspx
+    - row "Transactions":
+      - cell "Transactions":
+        - link "Transactions":
+          - /url: /content/Transactions.aspx
+    - row "Reports":
+      - cell "Reports":
+        - link "Reports":
+          - /url: /content/Reports.aspx
+    - row "Sign Out":
+      - cell "Sign Out":
+        - link "Sign Out":
+          - /url: /logout
+
+## frame content  (http://localhost:4173/content/Home.aspx)
+- heading "Home" [level=2]
+- paragraph: Select a function from the menu.
+- paragraph: Core build 2.1.0 Business date 09/10/2026

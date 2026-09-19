@@ -21,6 +21,21 @@ export const DiscoveryBudgetSchema = z.object({
    */
   maxObservationTokens: z.number().int().positive().default(4_000),
 
+  /**
+   * How long the state the model predicted is given to arrive before the
+   * prediction is called wrong. Clamped to what is left of the wall clock, so
+   * one patient wait cannot carry a run past the budget it was given.
+   */
+  expectMs: z.number().int().positive().default(4_000),
+
+  /**
+   * Output budget for one decision. A reasoning model spends this on thinking
+   * before it answers, and one that runs out mid-thought returns nothing at
+   * all — an empty turn that costs a step and twenty thousand tokens. Generous
+   * on purpose: the ceiling that matters is `maxSteps`, not this.
+   */
+  maxDecisionTokens: z.number().int().positive().default(8_000),
+
   /** Whole-run ceiling on model spend. Null disables the check. */
   maxModelTokens: z.number().int().positive().nullable().default(null),
 });
@@ -58,7 +73,7 @@ export const DiscoveryResultSchema = z.object({
   artifactRef: z.string().nullable(),
 
   /** Directory under evidence/discovery/ holding the trace and snapshots. */
-  traceRef: z.string(),
+  traceRef: z.string().nullable(),
 
   model: z.string(),
   budget: DiscoveryBudgetSchema,
